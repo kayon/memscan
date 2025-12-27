@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -78,6 +79,8 @@ type Process struct {
 	// W  Waking (Linux 2.6.33 to 3.13 only)
 	// P  Parked (Linux 3.9 to 3.13 only)
 	State ProcessState
+
+	RSS uint64
 }
 
 // Refresh read and parse /proc/pid/stat
@@ -102,6 +105,11 @@ func (proc *Process) Refresh() error {
 		&proc.PPID,
 		&proc.PGRP,
 	); err == nil {
+		statParts := bytes.Fields(buf)
+		if len(statParts) >= 24 {
+			proc.RSS, _ = strconv.ParseUint(string(statParts[23]), 10, 64)
+		}
+
 		buf, err = os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", proc.PID))
 		if err == nil {
 			// may be truncated. The kernel truncates it to 15 characters
@@ -153,6 +161,61 @@ func (proc *Process) Pause() error {
 
 func (proc *Process) Resume() error {
 	return ProcessResume(proc.PID)
+}
+
+func (proc *Process) hasFileDescriptor(target string) bool {
+	fdPath := fmt.Sprintf("/proc/%d/fd", proc.PID)
+	fds, err := os.ReadDir(fdPath)
+	if err != nil {
+		return false
+	}
+	for _, fd := range fds {
+		dest, _ := os.Readlink(filepath.Join(fdPath, fd.Name()))
+		if strings.Contains(dest, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func (proc *Process) hasEnvVariable(name string) bool {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", proc.PID))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(utils.BytesToString(data), name)
+}
+
+func (proc *Process) GetIdentityScore() int {
+	score := 0
+
+	if proc.hasFileDescriptor("renderD128") {
+		score += 200
+	}
+
+	if proc.RSS > 262144 {
+		score += 100
+	} else if proc.RSS > 51200 {
+		score += 50
+	}
+
+	if proc.hasEnvVariable("STEAM_COMPAT_DATA_PATH") {
+		score += 80
+	}
+
+	cmd := strings.ToLower(proc.Command)
+	if strings.Contains(cmd, "steamapps/common") {
+		score += 60
+	}
+	if strings.Contains(cmd, ".exe") {
+		score += 40
+	}
+
+	if strings.Contains(cmd, "steamwebhelper") || strings.Contains(cmd, "steam.sh") {
+		score -= 500
+	}
+
+	return score
 }
 
 func newProcess(pidStr string) *Process {

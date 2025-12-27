@@ -1,57 +1,67 @@
 package memscan
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"memscan/utils"
+	"strconv"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
 const (
-	memPageSize    = 1 << 12
+	memPageSize    = 4096
 	scanBufferSize = memPageSize << 4
 
-	regionLargeSize = memPageSize << 9
 	regionSmallSize = scanBufferSize
+	regionLargeSize = memPageSize << 9
 
 	defRegionsCaps = 1 << 11
 )
 
 var _ io.ReadSeekCloser = (*RegionReader)(nil)
 
-type Region struct {
-	Start uint64
-	End   uint64
-	Size  uint64
+type RegionType uint8
+
+const (
+	REGION_TYPE_MISC RegionType = iota
+	REGION_TYPE_CODE
+	REGION_TYPE_EXE
+	REGION_TYPE_HEAP
+	REGION_TYPE_STACK
+)
+
+func (r RegionType) String() string {
+	switch r {
+	case REGION_TYPE_MISC:
+		return "MISC"
+	case REGION_TYPE_CODE:
+		return "CODE"
+	case REGION_TYPE_EXE:
+		return "EXE"
+	case REGION_TYPE_HEAP:
+		return "HEAP"
+	case REGION_TYPE_STACK:
+		return "STACK"
+	}
+	return "UNKNOWN"
 }
 
-func (region Region) split() (regions Regions) {
-	n := region.Size / regionLargeSize
-	if region.Size%regionLargeSize != 0 {
-		n += 1
-	}
-	regions = make(Regions, n)
-	start := region.Start
-	var end uint64
-
-	for i := range regions {
-		end = start + regionLargeSize
-		if end > region.End {
-			end = region.End
-		}
-		regions[i].Start = start
-		regions[i].End = end
-		regions[i].Size = end - start
-		start = end
-	}
-
-	return
+type Region struct {
+	Start    uint64
+	End      uint64
+	Size     uint64
+	Type     RegionType
+	Perm     Permissions
+	Filename string
+	BaseAddr uint64
 }
 
 func (region Region) String() string {
-	return fmt.Sprintf("%08X-%08X %d", region.Start, region.End, region.Size)
+	return fmt.Sprintf("%08X-%08X %10d %s %-5s %08X %q", region.Start, region.End, region.Size, region.Perm, region.Type, region.BaseAddr, region.Filename)
 }
 
 func (region Region) Pipe(pid int) io.ReadSeekCloser {
@@ -127,4 +137,38 @@ func (r *RegionReader) Read(p []byte) (n int, err error) {
 
 	r.off += uint64(n)
 	return
+}
+
+func ParseRegion(line []byte) *Region {
+	i := bytes.IndexByte(line, ' ')
+	if i <= 0 || i+5 > len(line) {
+		return nil
+	}
+
+	dashIdx := bytes.IndexByte(line, '-')
+	if dashIdx <= 0 {
+		return nil
+	}
+
+	region := &Region{
+		Perm: ParsePermissions(line[i+1 : i+5]),
+	}
+	region.Start, _ = strconv.ParseUint(utils.BytesToString(line[:dashIdx]), 16, 64)
+	region.End, _ = strconv.ParseUint(utils.BytesToString(line[dashIdx+1:i]), 16, 64)
+	region.Size = region.End - region.Start
+
+	line = line[i+5:]
+
+	for i = 0; i < 3; i++ {
+		line = bytes.TrimLeft(line, " \t")
+		nextSpace := bytes.IndexByte(line, ' ')
+		if nextSpace == -1 {
+			return region
+		}
+		line = line[nextSpace:]
+	}
+
+	region.Filename = string(bytes.TrimLeft(line, " \t"))
+
+	return region
 }

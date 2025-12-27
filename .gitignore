@@ -1,2 +1,8 @@
 /.idea/
 .DS_Store
+.env
+*.so
+*.exe
+/cmd/memscan-cli/memscan-cli
+/cmd/backend/*.h
+/data/

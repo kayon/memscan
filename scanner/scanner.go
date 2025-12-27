@@ -6,137 +6,148 @@ import (
 	"io"
 )
 
-const defScanBufferSize = 1 << 16
+const (
+	defScanBufferSize = 1 << 16
+)
 
 type Scanner struct {
-	value   *Value
-	bufSize int
 	ctx     context.Context
+	value   Value
+	bufSize int
+	rf32    *RoundedFloat32
+	rf64    *RoundedFloat64
 }
 
-func NewScanner(ctx context.Context, value *Value) *Scanner {
+func NewScanner(ctx context.Context, value Value) *Scanner {
 	return NewScannerBuffer(ctx, value, defScanBufferSize)
 }
 
-func NewScannerBuffer(ctx context.Context, value *Value, bufSize int) *Scanner {
+func NewScannerBuffer(ctx context.Context, value Value, bufSize int) *Scanner {
 	if bufSize < value.Size() {
 		bufSize = value.Size() + 1
 	}
-	return &Scanner{
-		value:   value,
-		bufSize: bufSize,
-		ctx:     ctx,
+
+	scan := &Scanner{
+		ctx:   ctx,
+		value: value,
 	}
+
+	if value.HasOption() {
+		switch value.Type() {
+		case Float32:
+			scan.rf32 = newRoundedFloat32(value)
+			if bufSize < vectorFloat32Size {
+				bufSize = vectorFloat32Size
+			} else if bufSize%vectorFloat32Size != 0 {
+				bufSize = ((bufSize + vectorFloat32Size - 1) / vectorFloat32Size) * vectorFloat32Size
+			}
+		case Float64:
+			scan.rf64 = newRoundedFloat64(value)
+			if bufSize < vectorFloat64Size {
+				bufSize = vectorFloat64Size
+			} else if bufSize%vectorFloat64Size != 0 {
+				bufSize = ((bufSize + vectorFloat64Size - 1) / vectorFloat64Size) * vectorFloat64Size
+			}
+		}
+	} else {
+		if bufSize < value.Size() {
+			bufSize = value.Size()
+		} else if bufSize%4 != 0 {
+			bufSize = ((bufSize + 3) / 4) * 4
+		}
+	}
+
+	scan.bufSize = bufSize
+
+	return scan
 }
 
-func (s *Scanner) New(value *Value) {
-	s.value = value
-	if s.bufSize < value.Size() {
-		s.bufSize = value.Size() + 1
-	}
-}
-
-func (s *Scanner) Scan(reader io.Reader) (results []int) {
+func (s *Scanner) ScanCollector(reader io.Reader, collector Collector) {
 	if closer, ok := reader.(io.Closer); ok {
 		defer closer.Close()
 	}
+	if collector == nil {
+		return
+	}
+	if s.rf32 != nil {
+		scanFloat32Rounded(s.ctx, reader, s.bufSize, s.rf32.min, s.rf32.max, collector)
+	} else if s.rf64 != nil {
+		scanFloat64Rounded(s.ctx, reader, s.bufSize, s.rf64.min, s.rf64.max, collector)
+	} else {
+		s.scanBytes(reader, collector)
+	}
+}
 
+func (s *Scanner) Scan(reader io.Reader) []int {
+	var collector = NewSliceCollector(1024)
+	s.ScanCollector(reader, collector)
+	return collector.Results
+}
+
+func (s *Scanner) scanBytes(reader io.Reader, collector Collector) {
 	var (
 		size = s.value.Size()
 		// 每次搜索的块, 并为truncated预留了容量 size, 因为 truncated 只会小于 Value.Size
 		chunk = make([]byte, s.bufSize+size)
-		// 上一次 chunk 末尾的截断数据, 在下一轮追加到 chunk 头部
-		truncated         []byte
+		// 上一次 chunk 末尾可能截断的数据, 在下一轮追加到 chunk 头部
+		truncated         = make([]byte, size-1)
+		truncLen          = 0
 		forward, backward int
 		offset            int
 		isAligned         = s.value.Aligned()
 		pattern           = s.value.data
-
-		f32Min, f32Max float32
-		f64Min, f64Max float64
+		err               error
 	)
 
-	results = make([]int, 0, 1024)
-
-	// float32/64 是整数, 并且使用了舍入选项
-	applyFloatOption := s.value.isIntegerFloatWithOption()
-	if applyFloatOption {
-		switch s.value.Type() {
-		case Float32:
-			f32Min, f32Max = s.value.integerFloat32Range()
-		case Float64:
-			f64Min, f64Max = s.value.integerFloat64Range()
-		}
-	}
-
-Scanning:
 	for {
-		select {
-		case <-s.ctx.Done():
-			return nil
-		default:
-			// 将上次截断的数据移到开头
-			forward = copy(chunk, truncated)
-			// 填充剩余空间
-			backward = s.read(reader, chunk[forward:forward+s.bufSize])
+		if s.ctx.Err() != nil {
+			return
+		}
 
-			// 上次截断的 truncated + 本次读取, 不足以完成一次搜索
-			if forward+backward < size {
+		// 将上次截断的数据移到开头
+		if truncLen > 0 {
+			forward = copy(chunk, truncated[:truncLen])
+		}
+		// 填充剩余空间
+		backward, err = io.ReadFull(reader, chunk[forward:forward+s.bufSize])
+
+		// 上次截断的 truncated + 本次读取, 不足以完成一次搜索
+		if forward+backward < size {
+			break
+		}
+
+		currentChunk := chunk[:forward+backward]
+		chunkOffset := offset - forward
+
+		i := 0
+		for {
+			n := bytes.Index(currentChunk[i:], pattern)
+			if n < 0 {
 				break
 			}
+			pos := i + n
+			finalIndex := chunkOffset + pos
 
-			currentChunk := chunk[:forward+backward]
-			chunkOffset := offset - forward
-
-			if applyFloatOption {
-				if s.value.Type() == Float32 {
-					results = s.scanFloat32Unrolled(currentChunk, f32Min, f32Max, chunkOffset, results)
-				} else {
-					results = s.scanFloat64Unrolled(currentChunk, f64Min, f64Max, chunkOffset, results)
-				}
+			if !isAligned || finalIndex%size == 0 {
+				collector.Collect(finalIndex)
+				i = pos + size
 			} else {
-				i := 0
-				for {
-					n := bytes.Index(currentChunk[i:], pattern)
-					if n < 0 {
-						break
-					}
-					pos := i + n
-					finalIndex := chunkOffset + pos
-
-					if !isAligned || finalIndex%size == 0 {
-						results = append(results, finalIndex)
-					}
-					i = pos + size
-				}
-			}
-
-			if len(currentChunk) >= size {
-				// 预留上一次可能匹配截断的 Value.Size 大小
-				truncated = currentChunk[len(currentChunk)-size+1:]
-			} else {
-				truncated = currentChunk
-			}
-
-			offset += backward
-			if backward < s.bufSize {
-				break Scanning
+				i = pos + (size - (finalIndex % size))
 			}
 		}
-	}
-	return
-}
 
-func (s *Scanner) read(reader io.Reader, buf []byte) (n int) {
-	if len(buf) == 0 {
-		return
-	}
-	var err error
-	var l = len(buf)
-	for n < l && err == nil {
-		var nn int
-		nn, err = reader.Read(buf[n:])
-		n += nn
+		if len(currentChunk) >= size {
+			// 预留上一次可能匹配截断的 < Value.Size 大小
+			truncLen = copy(truncated, currentChunk[len(currentChunk)-size+1:])
+		} else {
+			truncLen = copy(truncated, currentChunk)
+		}
+
+		if err != nil || backward < s.bufSize {
+			break
+		}
+
+		offset += backward
 	}
 	return
 }

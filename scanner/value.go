@@ -10,12 +10,37 @@ import (
 	"strings"
 )
 
+var byteOrder = binary.LittleEndian
+
+type Option uint8
+
 const (
-	float32Epsilon = 1e-5
-	float64Epsilon = 1e-9
+	OptionFloatUnrounded Option = iota
+
+	// OptionFloatRounded Round
+	// (floor(x + 0.5) == Target
+	OptionFloatRounded
+
+	// OptionFloatExtreme Floor | Ceil
+	// (floor(x) == Target) OR (ceil(x) == Target)
+	OptionFloatExtreme
+
+	// OptionFloatTruncated Floor
+	// int(x) == Target
+	OptionFloatTruncated
 )
 
-var byteOrder = binary.LittleEndian
+func (opt Option) String() string {
+	switch opt {
+	case OptionFloatRounded:
+		return "rounded"
+	case OptionFloatExtreme:
+		return "extreme"
+	case OptionFloatTruncated:
+		return "truncated"
+	}
+	return ""
+}
 
 type Value struct {
 	typ    Type
@@ -33,7 +58,23 @@ func (v *Value) Type() Type {
 	return v.typ
 }
 
-func (v *Value) Raw() []byte {
+func (v *Value) Option() Option {
+	return v.option
+}
+
+func (v *Value) Comparable() ValueComparable {
+	if v.HasOption() {
+		switch v.Type() {
+		case Float32:
+			return newRoundedFloat32(*v)
+		case Float64:
+			return newRoundedFloat64(*v)
+		}
+	}
+	return v
+}
+
+func (v *Value) Bytes() []byte {
 	return v.data
 }
 
@@ -46,6 +87,10 @@ func (v *Value) Size() int {
 		return len(v.data)
 	}
 	return v.typ.ByteSize()
+}
+
+func (v *Value) SetBytes(data []byte) {
+	copy(v.data, data)
 }
 
 func (v *Value) SetType(typ Type) {
@@ -137,6 +182,22 @@ func (v *Value) Format(args ...Type) string {
 	return fmt.Sprint(v.ToRaw(typ))
 }
 
+func (v *Value) HasOption() bool {
+	if v.Type() == Float32 || v.Type() == Float64 {
+		return v.option > OptionFloatUnrounded && v.option <= OptionFloatTruncated
+	}
+	return false
+}
+
+func (v *Value) WithOption(option Option) {
+	if option < OptionFloatRounded || option > OptionFloatTruncated {
+		return
+	}
+	if v.Type() == Float32 || v.Type() == Float64 {
+		v.option = option
+	}
+}
+
 func (v *Value) EqualBytes(b []byte) bool {
 	return bytes.Equal(v.data, b)
 }
@@ -156,40 +217,6 @@ func (v *Value) isIntegerFloatWithOption() bool {
 	default:
 		return false
 	}
-}
-
-func (v *Value) integerFloat32Range() (min, max float32) {
-	if v.Type() != Float32 {
-		return
-	}
-	i := v.ToRaw(Float32).(float32)
-
-	switch v.option {
-	case OptionFloatRounded:
-		min, max = i-0.5, i+0.5
-	case OptionFloatExtreme:
-		min, max = i-1.0+float32Epsilon, i+1.0
-	case OptionFloatTruncated:
-		min, max = i, i+1.0
-	}
-	return
-}
-
-func (v *Value) integerFloat64Range() (min, max float64) {
-	if v.Type() != Float64 {
-		return
-	}
-	i := v.ToRaw(Float64).(float64)
-
-	switch v.option {
-	case OptionFloatRounded:
-		min, max = i-0.5, i+0.5
-	case OptionFloatExtreme:
-		min, max = i-1.0+float64Epsilon, i+1.0
-	case OptionFloatTruncated:
-		min, max = i, i+1.0
-	}
-	return
 }
 
 func NewInt8(i int8) *Value {
@@ -219,12 +246,12 @@ func NewInt32(i int32) *Value {
 	return v
 }
 
-func NewInt64(i int32) *Value {
+func NewInt64(i int64) *Value {
 	v := &Value{
 		typ:  Int64,
-		data: make([]byte, 4),
+		data: make([]byte, 8),
 	}
-	byteOrder.PutUint32(v.data, uint32(i))
+	byteOrder.PutUint64(v.data, uint64(i))
 	return v
 }
 
@@ -270,20 +297,7 @@ func NewBytes(b []byte) *Value {
 	return v
 }
 
-type Option uint8
-
-const (
-	OptionFloatUnrounded Option = iota
-
-	// OptionFloatRounded Round
-	// (floor(x + 0.5) == Target
-	OptionFloatRounded
-
-	// OptionFloatExtreme Floor | Ceil
-	// (floor(x) == Target) OR (ceil(x) == Target)
-	OptionFloatExtreme
-
-	// OptionFloatTruncated Floor
-	// int(x) == Target
-	OptionFloatTruncated
-)
+type ValueComparable interface {
+	Size() int
+	EqualBytes(b []byte) bool
+}

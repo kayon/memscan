@@ -2,11 +2,6 @@ package memscan
 
 type Regions []Region
 
-func (regions *Regions) reset() {
-	clear(*regions)
-	*regions = (*regions)[:0]
-}
-
 func (regions *Regions) Size() (size uint64) {
 	for _, region := range *regions {
 		size += region.Size
@@ -14,40 +9,72 @@ func (regions *Regions) Size() (size uint64) {
 	return
 }
 
-// Optimize regions
-// Merge consecutive small region and split large region
-// 合并连续的小块 Size <= regionSmallSize, 拆分大块 Size > regionLargeSize
-// 这是性能提升的关键
-func (regions *Regions) Optimize() {
-	n := len(*regions)
-	var next *Region
-	for i := 0; i < n; {
-		curr := &(*regions)[i]
-		if i+1 < n {
-			next = &(*regions)[i+1]
-		} else {
-			next = nil
-		}
-		if next != nil && curr.Size <= regionSmallSize {
-			if next.Start == curr.End && next.Size <= regionSmallSize {
-				curr.End = next.End
-				curr.Size += next.Size
-				n -= 1
-				*regions = append((*regions)[:i+1], (*regions)[i+2:]...)
-			} else {
-				i++
-			}
-		} else if curr.Size > regionLargeSize && curr.Size/regionLargeSize > 1 {
-			chunks := curr.split()
-			after := make(Regions, n-i-1)
-			// remove current item
-			copy(after, (*regions)[i+1:])
-			*regions = append((*regions)[:i], chunks...)
-			*regions = append(*regions, after...)
-			i += len(chunks) + 1
-			n += len(chunks) - 1
-		} else {
-			i++
-		}
+func RegionsOptimize(regions []Region) (optimized []Region) {
+	n := len(regions)
+	if n == 0 {
+		return
 	}
+	n = n + (n >> 3)
+	optimized = make([]Region, 0, n)
+
+	for i := 0; i < len(regions); {
+		curr := regions[i]
+
+		// 合并连续小块
+		for i+1 < len(regions) {
+			next := regions[i+1]
+			if curr.End == next.Start &&
+				curr.Size <= regionSmallSize &&
+				next.Size <= regionSmallSize {
+
+				curr.End = next.End
+				curr.Size = curr.End - curr.Start
+				i++
+
+				if curr.Size >= regionLargeSize {
+					optimized = append(optimized, curr)
+					i++
+					goto nextLoop
+				}
+			} else {
+				break
+			}
+		}
+
+		// 拆分超大块
+		if curr.Size > regionLargeSize {
+			currentStart := curr.Start
+			for currentStart < curr.End {
+				// 预设结束位置
+				nextEnd := currentStart + regionLargeSize
+
+				// 对齐到 4096 页面边界
+				// 这样拆分点永远在页面边缘，不会切断页内数据
+				if nextEnd < curr.End {
+					nextEnd = nextEnd & ^uint64(4095)
+					// 如果对齐后导致 nextEnd 回退到了 currentStart，
+					// 说明 regionLargeSize 太小，强制加一个 PageSize
+					if nextEnd <= currentStart {
+						nextEnd = currentStart + 4096
+					}
+				} else {
+					nextEnd = curr.End
+				}
+
+				optimized = append(optimized, Region{
+					Start: currentStart,
+					End:   nextEnd,
+					Size:  nextEnd - currentStart,
+					// 其它属性已不再重要
+				})
+				currentStart = nextEnd
+			}
+		} else {
+			optimized = append(optimized, curr)
+		}
+
+		i++
+	nextLoop:
+	}
+	return
 }

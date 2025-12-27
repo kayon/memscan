@@ -1,0 +1,70 @@
+package scanner
+
+import "math"
+
+const (
+	float32Epsilon = 1e-5
+	float64Epsilon = 1e-9
+)
+
+type RoundedFloat32 struct {
+	min float32
+	max float32
+}
+
+func (rf32 RoundedFloat32) Size() int {
+	return 4
+}
+
+func (rf32 RoundedFloat32) EqualBytes(b []byte) bool {
+	v := math.Float32frombits(byteOrder.Uint32(b))
+	return v >= rf32.min && v < rf32.max
+}
+
+type RoundedFloat64 struct {
+	min float64
+	max float64
+}
+
+func (rf64 RoundedFloat64) Size() int {
+	return 8
+}
+
+func (rf64 RoundedFloat64) EqualBytes(b []byte) bool {
+	v := math.Float64frombits(byteOrder.Uint64(b))
+	return v >= rf64.min && v < rf64.max
+}
+
+func newRoundedFloat32(value Value) *RoundedFloat32 {
+	i := value.ToRaw(Float32).(float32)
+	var rf = &RoundedFloat32{}
+
+	switch value.option {
+	case OptionFloatRounded:
+		r := float32(math.Round(float64(i)))
+		rf.min, rf.max = r-0.5, r+0.5
+	case OptionFloatExtreme:
+		rf.min, rf.max = i-1.0+float32Epsilon, i+1.0
+	case OptionFloatTruncated:
+		r := float32(math.Trunc(float64(i)))
+		rf.min, rf.max = r, r+1.0
+	}
+	return rf
+}
+
+func newRoundedFloat64(value Value) *RoundedFloat64 {
+	i := value.ToRaw(Float64).(float64)
+	var rf = &RoundedFloat64{}
+
+	switch value.option {
+	case OptionFloatRounded:
+		r := math.Round(i)
+		rf.min, rf.max = r-0.5, r+0.5
+	case OptionFloatExtreme:
+		rf.min, rf.max = i-1.0+float64Epsilon, i+1.0
+	case OptionFloatTruncated:
+		r := math.Trunc(i)
+		rf.min, rf.max = r, r+1.0
+	}
+	return rf
+}
