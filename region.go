@@ -22,7 +22,7 @@ import (
 	"io"
 	"strconv"
 
-	"gihub.com/kayon/memscan/utils"
+	"github.com/kayon/memscan/utils"
 	"golang.org/x/sys/unix"
 )
 

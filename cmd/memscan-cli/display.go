@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"gihub.com/kayon/memscan/deck"
 	"github.com/fatih/color"
+	"github.com/kayon/memscan/deck"
 )
 
 func displayProcesses(processes []*deck.Process) {

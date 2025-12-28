@@ -7,11 +7,10 @@ import (
 	"os/signal"
 	"time"
 
-	"gihub.com/kayon/memscan"
-	"gihub.com/kayon/memscan/deck"
-	"gihub.com/kayon/memscan/scanner"
-
 	"github.com/fatih/color"
+	"github.com/kayon/memscan"
+	"github.com/kayon/memscan/deck"
+	"github.com/kayon/memscan/scanner"
 	"github.com/manifoldco/promptui"
 )
 

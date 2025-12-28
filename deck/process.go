@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gihub.com/kayon/memscan/utils"
+	"github.com/kayon/memscan/utils"
 )
 
 type ProcessState byte

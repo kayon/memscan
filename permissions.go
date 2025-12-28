@@ -1,6 +1,6 @@
 package memscan
 
-import "gihub.com/kayon/memscan/utils"
+import "github.com/kayon/memscan/utils"
 
 type Permissions uint8
 

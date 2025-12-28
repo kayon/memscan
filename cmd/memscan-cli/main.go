@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 
-	"gihub.com/kayon/memscan/deck"
+	"github.com/kayon/memscan/deck"
 
 	"github.com/spf13/pflag"
 )

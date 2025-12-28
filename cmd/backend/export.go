@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"unsafe"
 
-	"gihub.com/kayon/memscan/scanner"
+	"github.com/kayon/memscan/scanner"
 )
 
 func returnJSON(v interface{}) *C.char {

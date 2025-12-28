@@ -18,8 +18,8 @@ package main
 import (
 	"strconv"
 
-	"gihub.com/kayon/memscan"
-	"gihub.com/kayon/memscan/scanner"
+	"github.com/kayon/memscan"
+	"github.com/kayon/memscan/scanner"
 )
 
 var version = "0.2.1"
