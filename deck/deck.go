@@ -14,12 +14,6 @@ const DeckUID = 1000
 
 //const ReaperPathPrefix = "/home/deck/.local/share/Steam/"
 
-type GameProcess struct {
-	Name       string
-	InstanceID int
-	PID        int
-}
-
 var selfPID int
 
 func init() {
@@ -44,7 +38,7 @@ var procNameInvalid = map[string]bool{
 	"MainThread": true,
 }
 
-func findSteamLaunchGameProcess(processes []*Process, reaperPID int) *Process {
+func findSteamLaunchGameProcesses(processes []*Process, reaperPID int) []*Process {
 	wrapIndex := slices.IndexFunc(processes, func(proc *Process) bool {
 		return proc.PPID == reaperPID
 	})
@@ -76,10 +70,10 @@ func findSteamLaunchGameProcess(processes []*Process, reaperPID int) *Process {
 	}
 
 	slices.SortFunc(children, func(a, b *Process) int {
-		return int(b.RSS - a.RSS)
+		return b.GetIdentityScore() - a.GetIdentityScore()
 	})
 
-	return children[0]
+	return children
 }
 
 func FindGameWithAppID(appID int64) *Process {
@@ -101,7 +95,12 @@ func FindGameWithAppID(appID int64) *Process {
 		return nil
 	}
 	reaperPID := processes[reaperIndex].PID
-	return findSteamLaunchGameProcess(processes[reaperIndex:], reaperPID)
+	processes = findSteamLaunchGameProcesses(processes[reaperIndex:], reaperPID)
+	if len(processes) > 0 {
+		processes[0].AppID = appID
+		return processes[0]
+	}
+	return nil
 }
 
 func FindGameWithInstanceID(instanceID int) *Process {
@@ -112,7 +111,11 @@ func FindGameWithInstanceID(instanceID int) *Process {
 	slices.SortFunc(processes, func(a, b *Process) int {
 		return a.PID - b.PID
 	})
-	return findSteamLaunchGameProcess(processes, instanceID)
+	processes = findSteamLaunchGameProcesses(processes, instanceID)
+	if len(processes) > 0 {
+		return processes[0]
+	}
+	return nil
 }
 
 func EnumGameProcesses() []*Process {
@@ -132,11 +135,10 @@ func EnumGameProcesses() []*Process {
 		return nil
 	}
 	reaperPID := processes[reaperIndex].PID
-	proc := findSteamLaunchGameProcess(processes[reaperIndex:], reaperPID)
-	if proc == nil {
-		return nil
-	}
-	return []*Process{proc}
+	processes = findSteamLaunchGameProcesses(processes[reaperIndex:], reaperPID)
+	return slices.DeleteFunc(processes, func(proc *Process) bool {
+		return proc.GetIdentityScore() <= 0
+	})
 }
 
 // LegacyEnumGameProcesses Deprecated

@@ -8,7 +8,6 @@ import (
 	"slices"
 	"sync"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sys/unix"
@@ -18,6 +17,7 @@ import (
 )
 
 const (
+	IOV_MAX           = 1024
 	scanMaxGoroutines = 2048
 	resultsAllocCaps  = 256 * 1024 * 1024
 )
@@ -175,7 +175,7 @@ func (m *Memscan) NextScan(value *scanner.Value) time.Duration {
 		}
 
 		wg.Add(1)
-		go m.filterResultsPage(addresses, value.Comparable(), &wg)
+		go m.filterResults(addresses, value.Comparable(), &wg)
 	}
 
 	wg.Wait()
@@ -187,7 +187,7 @@ func (m *Memscan) NextScan(value *scanner.Value) time.Duration {
 	return time.Since(st)
 }
 
-func (m *Memscan) filterResultsPage(addresses []uint64, value scanner.ValueComparable, wg *sync.WaitGroup) {
+func (m *Memscan) filterResults(addresses []uint64, value scanner.ValueComparable, wg *sync.WaitGroup) {
 	defer m.sem.Release(1)
 	defer wg.Done()
 
@@ -303,36 +303,35 @@ func (m *Memscan) readValuesRaw(addresses []uint64, size int, buf []byte) (data 
 	}
 
 	data = make([][]byte, n)
-	invalidIndex = make([]int, 0, n)
+	invalidIndex = make([]int, 0, n>>2)
+	localPtr := getLocalIovec()
+	remotePtr := getRemoteIovec()
+
+	local := *localPtr
+	remote := *remotePtr
 
 	currentPos := 0
-
 	for currentPos < n {
 		remaining := n - currentPos
-		var local = make([]unix.Iovec, 0, remaining)
-		var remote = make([]unix.Iovec, 0, remaining)
-
-		for i := currentPos; i < n; i++ {
-			start := i * size
+		for i := 0; i < remaining; i++ {
+			idx := currentPos + i
+			start := idx * size
 			end := start + size
-			data[i] = buf[start:end]
+			data[idx] = buf[start:end]
 
-			local = append(local, unix.Iovec{
-				Base: &data[i][0],
-				Len:  uint64(size),
-			})
-			remote = append(remote, unix.Iovec{
-				Base: (*byte)(unsafe.Pointer(uintptr(addresses[i]))),
-				Len:  uint64(size),
-			})
+			local[i].Base = &data[idx][0]
+			local[i].Len = uint64(size)
+
+			remote[i].Base = uintptr(addresses[idx])
+			remote[i].Len = size
 		}
 
-		nRead, err := processVmReadv(m.proc.PID, local, remote)
+		nRead, err := unix.ProcessVMReadv(m.proc.PID, local[:remaining], remote[:remaining], 0)
 		successCount := nRead / size
 		currentPos += successCount
 
 		if currentPos < n {
-			// 由于buf复用, 这里清零会安全一点
+			// 清空后续, 防止脏读
 			for i := range data[currentPos] {
 				data[currentPos][i] = 0
 			}
@@ -345,6 +344,10 @@ func (m *Memscan) readValuesRaw(addresses []uint64, size int, buf []byte) (data 
 			break
 		}
 	}
+
+	freeLocalIovec(localPtr)
+	freeRemoteIovec(remotePtr)
+
 	return
 }
 
@@ -355,33 +358,36 @@ func (m *Memscan) writeValues(addresses []uint64, value *scanner.Value) (int, er
 		return 0, nil
 	}
 
-	buf := make([]byte, n*size)
 	rawData := value.Bytes()
-	for i := 0; i < n; i++ {
-		copy(buf[i*size:(i+1)*size], rawData)
-	}
+	basePtr := &rawData[0]
 
 	totalWritten := 0
 	currentPos := 0
 	var lastErr error
 
+	localPtr := getLocalIovec()
+	remotePtr := getRemoteIovec()
+	defer freeLocalIovec(localPtr)
+	defer freeRemoteIovec(remotePtr)
+
+	local := *localPtr
+	remote := *remotePtr
+
 	for currentPos < n {
 		remaining := n - currentPos
-		local := make([]unix.Iovec, 0, remaining)
-		remote := make([]unix.Iovec, 0, remaining)
 
-		for i := currentPos; i < n; i++ {
-			local = append(local, unix.Iovec{
-				Base: &buf[i*size],
+		for i := 0; i < remaining; i++ {
+			local[i] = unix.Iovec{
+				Base: basePtr,
 				Len:  uint64(size),
-			})
-			remote = append(remote, unix.Iovec{
-				Base: (*byte)(unsafe.Pointer(uintptr(addresses[i]))),
-				Len:  uint64(size),
-			})
+			}
+			remote[i] = unix.RemoteIovec{
+				Base: uintptr(addresses[currentPos+i]),
+				Len:  size,
+			}
 		}
 
-		nWrite, err := processVmWritev(m.proc.PID, local, remote)
+		nWrite, err := unix.ProcessVMWritev(m.proc.PID, local[:remaining], remote[:remaining], 0)
 
 		totalWritten += nWrite
 		successCount := nWrite / size

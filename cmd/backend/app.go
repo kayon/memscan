@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const version = "0.2.0"
+const version = "0.2.1"
 
 const (
 	MinResultsThreshold = 10
@@ -29,16 +29,25 @@ func (app *App) SetRenderResultsThreshold(value int) {
 
 func (app *App) Clear() {
 	app.scan.Reset()
-	app.game = nil
-	app.value = nil
+	app.ResetScan()
 }
 
 func (app *App) ResetScan() {
 	app.scan.Reset()
+	app.value = nil
 }
 
+func (app *App) GameProcess(appID int64) *deck.Process {
+	if app.game == nil || (app.game.AppID != appID || !app.game.Alive()) {
+		app.game = deck.FindGameWithAppID(appID)
+	}
+	return app.game
+}
+
+// FirstScan 在此之前调用 GameProcess
+// 在UI中保存进程信息用于调试, 其它任何时候不再返回 Process
 func (app *App) FirstScan(appID int64, value string, valueType scanner.Type, option scanner.Option) *Results {
-	app.game = deck.FindGameWithAppID(appID)
+	app.GameProcess(appID)
 	if app.game == nil {
 		return nil
 	}

@@ -7,7 +7,6 @@ import (
 	"io"
 	"memscan/utils"
 	"strconv"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -76,7 +75,7 @@ type RegionReader struct {
 
 	// pre-allocation
 	lIov [1]unix.Iovec
-	rIov [1]unix.Iovec
+	rIov [1]unix.RemoteIovec
 }
 
 func (r *RegionReader) Close() error {
@@ -124,11 +123,11 @@ func (r *RegionReader) Read(p []byte) (n int, err error) {
 	r.lIov[0].Base = &p[0]
 	r.lIov[0].Len = size
 
-	r.rIov[0].Base = (*byte)(unsafe.Pointer(uintptr(addr)))
-	r.rIov[0].Len = size
+	r.rIov[0].Base = uintptr(addr)
+	r.rIov[0].Len = int(size)
 
 	// err will never be an EOF, but may be a bad address
-	n, err = processVmReadv(r.pid, r.lIov[:], r.rIov[:])
+	n, err = unix.ProcessVMReadv(r.pid, r.lIov[:], r.rIov[:], 0)
 	if err != nil {
 		err = fmt.Errorf("%w at %08X", err, addr)
 		// when an error occurs, n may be -1

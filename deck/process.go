@@ -1,9 +1,11 @@
 package deck
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -56,6 +58,8 @@ func EnumDeckProcesses() ([]*Process, error) {
 }
 
 type Process struct {
+	AppID int64
+
 	PID int
 	// the PID of the parent of this process
 	PPID int
@@ -186,33 +190,34 @@ func (proc *Process) hasEnvVariable(name string) bool {
 	return strings.Contains(utils.BytesToString(data), name)
 }
 
-func (proc *Process) GetIdentityScore() int {
-	score := 0
+func (proc *Process) GetIdentityScore() (score int) {
+	cmd := strings.ToLower(proc.Command)
+	excludeKeywords := []string{
+		"steamwebhelper", "reaper", "explorer.exe", "services.exe",
+		"svchost.exe", "winedevice.exe", "plugplay.exe", "conhost.exe",
+		"tabtip.exe", "monitor.exe", "rpcss.exe", "spoolsv.exe",
+		"xalia.exe", "wineserver",
+	}
+	for _, key := range excludeKeywords {
+		if strings.Contains(cmd, key) {
+			return -5000
+		}
+	}
 
 	if proc.hasFileDescriptor("renderD128") {
-		score += 200
+		score += 500
 	}
 
-	if proc.RSS > 262144 {
-		score += 100
-	} else if proc.RSS > 51200 {
-		score += 50
-	}
+	status := proc.readProcStatus()
+	if status != nil {
+		score += status.Threads * 10
 
-	if proc.hasEnvVariable("STEAM_COMPAT_DATA_PATH") {
-		score += 80
-	}
-
-	cmd := strings.ToLower(proc.Command)
-	if strings.Contains(cmd, "steamapps/common") {
-		score += 60
-	}
-	if strings.Contains(cmd, ".exe") {
-		score += 40
-	}
-
-	if strings.Contains(cmd, "steamwebhelper") || strings.Contains(cmd, "steam.sh") {
-		score -= 500
+		if status.VmData > 0 {
+			mb := float64(status.VmData) / 1024.0
+			if mb > 1 {
+				score += int(math.Log2(mb) * 20)
+			}
+		}
 	}
 
 	return score
@@ -236,4 +241,56 @@ func newProcess(pidStr string) *Process {
 func NewProcess(pid int) (*Process, error) {
 	process := &Process{PID: pid}
 	return process, process.Refresh()
+}
+
+type ProcStatus struct {
+	Threads int
+	VmData  int
+}
+
+func (proc *Process) readProcStatus() *ProcStatus {
+	status := &ProcStatus{}
+	path := "/proc/" + strconv.Itoa(proc.PID) + "/status"
+
+	file, err := os.Open(path)
+	if err != nil {
+		return status
+	}
+	defer file.Close()
+
+	var read int
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// 处理 Threads
+		if strings.HasPrefix(line, "Threads:") {
+			read++
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				val, _ := strconv.Atoi(fields[1])
+				status.Threads = val
+			}
+			if read == 2 {
+				break
+			}
+			continue
+		}
+
+		// 处理 VmData
+		if strings.HasPrefix(line, "VmData:") {
+			read++
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				val, _ := strconv.ParseInt(fields[1], 10, 64)
+				status.VmData = int(val)
+			}
+			if read == 2 {
+				break
+			}
+			continue
+		}
+	}
+	return status
 }

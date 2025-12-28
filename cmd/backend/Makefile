@@ -16,7 +16,6 @@ build:
 	@GOOS=linux \
      GOARCH=amd64 \
      CGO_ENABLED=1 \
-     CC="zig cc -target x86_64-linux-gnu" \
      go build -trimpath -ldflags="-s -w" -o $(SHARED_NAME) -buildmode=c-shared
 	@rm -f $(HEADER_NAME)
 

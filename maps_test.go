@@ -55,7 +55,6 @@ func TestOptimize(t *testing.T) {
 		exe:  `/home/deck/.local/share/Steam/compatibilitytools.d/GE-Proton10-24/files/bin/wine64-preloader`,
 		file: f,
 	}
-	// 0AB84A68 98760
 	regions := m.Parse(REGION_ALL_RW)
 	optimized := RegionsOptimize(regions)
 
@@ -63,7 +62,6 @@ func TestOptimize(t *testing.T) {
 }
 
 func checkOptimizedRegionsStrict(t *testing.T, regions []Region, optimized []Region) {
-	// 1. Validate Total Byte Conservation
 	var totalOri, totalOpt uint64
 	for _, r := range regions {
 		totalOri += r.Size
@@ -76,7 +74,6 @@ func checkOptimizedRegionsStrict(t *testing.T, regions []Region, optimized []Reg
 		t.Fatalf("CRITICAL: Byte count mismatch! Original: %d, Optimized: %d", totalOri, totalOpt)
 	}
 
-	// 2. Validate No Internal Overlaps in Optimized Result
 	for i := 0; i < len(optimized)-1; i++ {
 		if optimized[i+1].Start < optimized[i].End {
 			t.Fatalf("LOGIC ERROR: Overlap detected at Block %d [..%X] and Block %d [%X..]",
@@ -84,8 +81,6 @@ func checkOptimizedRegionsStrict(t *testing.T, regions []Region, optimized []Reg
 		}
 	}
 
-	// 3. Strict Pointer-Walking Coverage Test
-	// This ensures every byte of the original exists in the optimized list in order.
 	oIdx := 0
 	for _, ori := range regions {
 		currentPtr := ori.Start

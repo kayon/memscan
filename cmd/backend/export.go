@@ -40,6 +40,12 @@ func ResetScan() {
 	app.ResetScan()
 }
 
+//export GameProcess
+func GameProcess(appID C.int64_t) *C.char {
+	process := app.GameProcess(int64(appID))
+	return returnJSON(process)
+}
+
 //export FirstScan
 func FirstScan(appID C.int64_t, value *C.char, valueType C.int, option C.int) *C.char {
 	results := app.FirstScan(int64(appID), C.GoString(value), scanner.Type(valueType), scanner.Option(option))
