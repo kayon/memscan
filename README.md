@@ -11,3 +11,5 @@ A high-performance memory scanning engine specifically designed for the Steam De
 
 ## License
 This project is licensed under the **GNU General Public License v3.0**. For more details, please refer to the [LICENSE](LICENSE) file.
+
+This project also utilizes several third-party open-source components (e.g., color, pflag, promptui) under their respective MIT and BSD licenses. Please refer to `go.mod` for a complete list of dependencies.
