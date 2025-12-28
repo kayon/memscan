@@ -6,8 +6,9 @@ package main
 import "C"
 import (
 	"encoding/json"
-	"memscan/scanner"
 	"unsafe"
+
+	"gihub.com/kayon/memscan/scanner"
 )
 
 func returnJSON(v interface{}) *C.char {

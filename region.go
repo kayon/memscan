@@ -20,9 +20,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"memscan/utils"
 	"strconv"
 
+	"gihub.com/kayon/memscan/utils"
 	"golang.org/x/sys/unix"
 )
 

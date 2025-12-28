@@ -27,8 +27,8 @@ import (
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sys/unix"
 
-	"memscan/deck"
-	"memscan/scanner"
+	"gihub.com/kayon/memscan/deck"
+	"gihub.com/kayon/memscan/scanner"
 )
 
 const (

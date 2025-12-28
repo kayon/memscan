@@ -1,13 +1,12 @@
 package main
 
 import (
-	"memscan"
-	"memscan/deck"
-	"memscan/scanner"
 	"time"
-)
 
-const version = "0.2.1"
+	"gihub.com/kayon/memscan"
+	"gihub.com/kayon/memscan/deck"
+	"gihub.com/kayon/memscan/scanner"
+)
 
 const (
 	MinResultsThreshold = 10

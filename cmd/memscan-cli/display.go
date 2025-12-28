@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"memscan/deck"
 
+	"gihub.com/kayon/memscan/deck"
 	"github.com/fatih/color"
 )
 

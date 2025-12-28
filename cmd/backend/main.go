@@ -16,10 +16,13 @@
 package main
 
 import (
-	"memscan"
-	"memscan/scanner"
 	"strconv"
+
+	"gihub.com/kayon/memscan"
+	"gihub.com/kayon/memscan/scanner"
 )
+
+var version = "0.2.1"
 
 const (
 	defRenderResultsThreshold = 10

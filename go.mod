@@ -1,4 +1,4 @@
-module memscan
+module gihub.com/kayon/memscan
 
 go 1.25.4
 

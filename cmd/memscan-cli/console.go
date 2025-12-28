@@ -3,13 +3,13 @@ package main
 import (
 	"fmt"
 	"math"
-	"memscan/deck"
-	"memscan/scanner"
 	"os"
 	"os/signal"
 	"time"
 
-	"memscan"
+	"gihub.com/kayon/memscan"
+	"gihub.com/kayon/memscan/deck"
+	"gihub.com/kayon/memscan/scanner"
 
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"

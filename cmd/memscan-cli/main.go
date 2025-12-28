@@ -17,8 +17,9 @@ package main
 
 import (
 	"fmt"
-	"memscan/deck"
 	"os"
+
+	"gihub.com/kayon/memscan/deck"
 
 	"github.com/spf13/pflag"
 )
