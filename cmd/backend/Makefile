@@ -6,16 +6,14 @@ HEADER_NAME=$(SHARED_NAME:.so=.h)
 DECK_USER=deck
 DECK_PASS?=$(DECK_PWD)
 DECK_HOST?=$(DECK_HOST)
-DECK_PLUG_BACKEND_DIR=/home/deck/homebrew/plugins/reroll/bin
+DECK_PLUG_BACKEND_DIR=/home/deck/homebrew/plugins/decky-reroll/bin
 
 
 .PHONY: all build build.cross deploy clean
 all: build
 
 build:
-	@GOOS=linux \
-     GOARCH=amd64 \
-     CGO_ENABLED=1 \
+	@CGO_ENABLED=1 \
      go build -trimpath -ldflags="-s -w" -o $(SHARED_NAME) -buildmode=c-shared
 	@rm -f $(HEADER_NAME)
 
