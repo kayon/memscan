@@ -13,12 +13,10 @@ DECK_PLUG_BACKEND_DIR=/home/deck/homebrew/plugins/decky-reroll/bin
 all: build
 
 build:
-	@GOOS=linux \
-	GOARCH=amd64 \
+	@GOARCH=amd64 \
 	CGO_ENABLED=1 \
-	CC="musl-gcc" \
 	go build -trimpath \
-	-ldflags="-s -w -linkmode external -extldflags '-static'" \
+	-ldflags="-s -w" \
 	-o $(SHARED_NAME) \
 	-buildmode=c-shared
 
@@ -26,9 +24,9 @@ build.cross:
 	@GOOS=linux \
      GOARCH=amd64 \
      CGO_ENABLED=1 \
-     CC="zig cc -target x86_64-linux-gnu" \
+     CC="zig cc -target x86_64-linux-gnu.2.33" \
      go build -trimpath \
-     -ldflags="-s -w -linkmode external -extldflags '-static'" \
+     -ldflags="-s -w -linkmode external" \
      -o $(SHARED_NAME) \
      -buildmode=c-shared
 	@rm -f $(HEADER_NAME)
