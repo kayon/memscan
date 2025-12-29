@@ -36,7 +36,19 @@ func (app *App) ResetScan() {
 	app.value = nil
 }
 
-func (app *App) GameProcess(appID int64) *deck.Process {
+func (app *App) GetGameProcesses(appID int64) []*deck.Process {
+	return deck.EnumGameProcesses(appID)
+}
+
+func (app *App) SelectGameProcess(appID int64, pid int) *deck.Process {
+	if proc, _ := deck.NewProcess(pid); proc != nil {
+		proc.AppID = appID
+		app.game = proc
+	}
+	return app.game
+}
+
+func (app *App) AutoSelectGameProcess(appID int64) *deck.Process {
 	if app.game == nil || (app.game.AppID != appID || !app.game.Alive()) {
 		app.game = deck.FindGameWithAppID(appID)
 	}
@@ -46,7 +58,7 @@ func (app *App) GameProcess(appID int64) *deck.Process {
 // FirstScan 在此之前调用 GameProcess
 // 在UI中保存进程信息用于调试, 其它任何时候不再返回 Process
 func (app *App) FirstScan(appID int64, value string, valueType scanner.Type, option scanner.Option) *Results {
-	app.GameProcess(appID)
+	app.AutoSelectGameProcess(appID)
 	if app.game == nil {
 		return nil
 	}

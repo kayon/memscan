@@ -37,7 +37,7 @@ func init() {
 	pflag.BoolVarP(&showAllProcesses, "all-processes", "a", false, "display all running processes")
 	pflag.BoolVarP(&showGameProcesses, "game-processes", "g", false, "display only game-related processes")
 	pflag.IntVar(&findGameWithInstanceID, "instance", 0, "find game process with instance ID")
-	pflag.Int64Var(&findGameWithAppID, "appid", 0, "find game process with app ID")
+	pflag.Int64Var(&findGameWithAppID, "appid", -1, "find game process with app ID")
 
 	// Execute the parsing
 	pflag.Parse()
@@ -57,7 +57,7 @@ func main() {
 		if process != nil {
 			displayProcesses([]*deck.Process{process})
 		}
-	case findGameWithAppID > 0:
+	case findGameWithAppID > -1:
 		process := deck.FindGameWithAppID(findGameWithAppID)
 		if process != nil {
 			displayProcesses([]*deck.Process{process})

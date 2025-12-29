@@ -41,9 +41,21 @@ func ResetScan() {
 	app.ResetScan()
 }
 
-//export GameProcess
-func GameProcess(appID C.int64_t) *C.char {
-	process := app.GameProcess(int64(appID))
+//export GetGameProcesses
+func GetGameProcesses(appID C.int64_t) *C.char {
+	processes := app.GetGameProcesses(int64(appID))
+	return returnJSON(processes)
+}
+
+//export SelectGameProcess
+func SelectGameProcess(appID C.int64_t, pid C.int) *C.char {
+	process := app.SelectGameProcess(int64(appID), int(pid))
+	return returnJSON(process)
+}
+
+//export AutoSelectGameProcess
+func AutoSelectGameProcess(appID C.int64_t) *C.char {
+	process := app.AutoSelectGameProcess(int64(appID))
 	return returnJSON(process)
 }
 

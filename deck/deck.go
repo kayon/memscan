@@ -77,32 +77,15 @@ func findSteamLaunchGameProcesses(processes []*Process, reaperPID int) []*Proces
 }
 
 func FindGameWithAppID(appID int64) *Process {
-	processes, err := EnumDeckProcesses()
-	if err != nil {
-		return nil
-	}
-	slices.SortFunc(processes, func(a, b *Process) int {
-		return a.PID - b.PID
-	})
-
-	var pattern = fmt.Sprintf("SteamLaunch AppId=%d", appID)
-
-	reaperIndex := slices.IndexFunc(processes, func(proc *Process) bool {
-		return strings.Contains(proc.Command, pattern)
-	})
-
-	if reaperIndex == -1 {
-		return nil
-	}
-	reaperPID := processes[reaperIndex].PID
-	processes = findSteamLaunchGameProcesses(processes[reaperIndex:], reaperPID)
+	processes := EnumGameProcesses(appID)
 	if len(processes) > 0 {
-		processes[0].AppID = appID
 		return processes[0]
 	}
 	return nil
 }
 
+// FindGameWithInstanceID
+// Deprecated
 func FindGameWithInstanceID(instanceID int) *Process {
 	processes, err := EnumDeckProcesses()
 	if err != nil {
@@ -118,7 +101,7 @@ func FindGameWithInstanceID(instanceID int) *Process {
 	return nil
 }
 
-func EnumGameProcesses() []*Process {
+func EnumGameProcesses(args ...int64) []*Process {
 	processes, err := EnumDeckProcesses()
 	if err != nil {
 		return nil
@@ -127,8 +110,18 @@ func EnumGameProcesses() []*Process {
 		return a.PID - b.PID
 	})
 
+	var appID int64
+	if len(args) > 0 && args[0] > 0 {
+		appID = args[0]
+	}
+
+	pattern := `SteamLaunch AppId=`
+	if appID > 0 {
+		pattern += fmt.Sprintf("%d", appID)
+	}
+
 	reaperIndex := slices.IndexFunc(processes, func(proc *Process) bool {
-		return strings.Contains(proc.Command, `SteamLaunch AppId=`)
+		return strings.Contains(proc.Command, pattern)
 	})
 
 	if reaperIndex == -1 {
@@ -136,12 +129,21 @@ func EnumGameProcesses() []*Process {
 	}
 	reaperPID := processes[reaperIndex].PID
 	processes = findSteamLaunchGameProcesses(processes[reaperIndex:], reaperPID)
-	return slices.DeleteFunc(processes, func(proc *Process) bool {
+	processes = slices.DeleteFunc(processes, func(proc *Process) bool {
 		return proc.GetIdentityScore() <= 0
 	})
+
+	if appID > 0 {
+		for i := range processes {
+			processes[i].AppID = appID
+		}
+	}
+
+	return processes
 }
 
-// LegacyEnumGameProcesses Deprecated
+// LegacyEnumGameProcesses
+// Deprecated
 func LegacyEnumGameProcesses() []*Process {
 	processes, err := EnumDeckProcesses()
 	if err != nil {
