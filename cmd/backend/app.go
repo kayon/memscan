@@ -91,7 +91,7 @@ func (app *App) NextScan(value string) *Results {
 	}
 
 	option := app.value.Option()
-	app.value = parseValue(value, app.value.Type())
+	app.value = parseValue(value, app.value.Type(), true)
 	if app.value == nil {
 		return app.render(0)
 	}
@@ -109,7 +109,7 @@ func (app *App) ChangeValues(value string, indexes []int) *Results {
 		return nil
 	}
 
-	app.value = parseValue(value, app.value.Type())
+	app.value = parseValue(value, app.value.Type(), true)
 	if app.value == nil {
 		return nil
 	}

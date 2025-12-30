@@ -17,6 +17,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/kayon/memscan"
 	"github.com/kayon/memscan/scanner"
@@ -46,31 +47,52 @@ func init() {
 
 func main() {}
 
-func parseValue(rawValue string, valueType scanner.Type) *scanner.Value {
+func parseValue(rawValue string, valueType scanner.Type, args ...bool) *scanner.Value {
+	// 对于非首次扫描，应该允许零值
+	var allowZeroValue bool
+	if len(args) > 0 {
+		allowZeroValue = args[0]
+	}
+
+	rawValue = strings.TrimLeft(rawValue, "0")
+	if rawValue == "" {
+		rawValue = "0"
+	}
+
+	if !allowZeroValue && rawValue == "0" {
+		return nil
+	}
+
 	var value *scanner.Value
 	switch valueType {
 	case scanner.Int8:
-		if i, err := strconv.ParseInt(rawValue, 10, 8); err == nil && i != 0 {
+		if i, err := strconv.ParseUint(rawValue, 10, 8); err == nil {
 			value = scanner.NewInt8(int8(i))
 		}
 	case scanner.Int16:
-		if i, err := strconv.ParseInt(rawValue, 10, 16); err == nil && i != 0 {
+		if i, err := strconv.ParseUint(rawValue, 10, 16); err == nil {
 			value = scanner.NewInt16(int16(i))
 		}
 	case scanner.Int32:
-		if i, err := strconv.ParseInt(rawValue, 10, 32); err == nil && i != 0 {
+		if i, err := strconv.ParseUint(rawValue, 10, 32); err == nil {
 			value = scanner.NewInt32(int32(i))
 		}
 	case scanner.Int64:
-		if i, err := strconv.ParseInt(rawValue, 10, 64); err == nil && i != 0 {
-			value = scanner.NewInt64(i)
+		if i, err := strconv.ParseUint(rawValue, 10, 64); err == nil {
+			value = scanner.NewInt64(int64(i))
 		}
 	case scanner.Float32:
-		if i, err := strconv.ParseFloat(rawValue, 32); err == nil && i != 0 {
+		if i, err := strconv.ParseFloat(rawValue, 32); err == nil {
+			if !allowZeroValue && i == 0 {
+				return nil
+			}
 			value = scanner.NewFloat32(float32(i))
 		}
 	case scanner.Float64:
-		if i, err := strconv.ParseFloat(rawValue, 64); err == nil && i != 0 {
+		if i, err := strconv.ParseFloat(rawValue, 64); err == nil {
+			if !allowZeroValue && i == 0 {
+				return nil
+			}
 			value = scanner.NewFloat64(i)
 		}
 	default:
