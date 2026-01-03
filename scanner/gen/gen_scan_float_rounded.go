@@ -13,15 +13,17 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
 const vector{{.Name}}Size = {{.Type.Size}} * {{.Type.Factor}}
 
-func scan{{.Name}}Rounded(ctx context.Context, reader io.Reader, bufSize int, min {{.Type.Type}}, max {{.Type.Type}}, collector Collector) {
+func scan{{.Name}}Rounded(ctx context.Context, reader io.Reader, bufSize int, min {{.Type.Type}}, max {{.Type.Type}}, collector CollectorFunc, options *Options) {
 	var (
 		chunk     = make([]byte, bufSize)
 		offset    = 0
+		seeker, _ = reader.(io.Seeker)
 	)
 
 	for {
@@ -30,18 +32,27 @@ func scan{{.Name}}Rounded(ctx context.Context, reader io.Reader, bufSize int, mi
 		}
 
 		n, err := io.ReadFull(reader, chunk)
-		if n < {{.Type.Size}} {
-			break
+		if n < 0 {
+			n = 0
 		}
-
-		// 保证处理的长度始终是对齐到 {{.Type.Size}} 的
-		processable := (n / {{.Type.Size}}) * {{.Type.Size}}
-		
-		scan{{.Name}}Vectorized(chunk[:processable], min, max, offset, collector)
+		if n >= {{.Type.Size}} {
+			// 保证处理的长度始终是对齐到 {{.Type.Size}} 字节的
+			processable := (n / {{.Type.Size}}) * {{.Type.Size}}
+			scan{{.Type.Name}}Vectorized(chunk[:processable], min, max, offset, collector)
+		}
 		offset += n
-
 		if err != nil {
-			// io.ErrUnexpectedEOF
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if options != nil {
+				// 如果未读完期望大小, 尝试对齐到下一页
+				nextOffset, ok := options.alignNextPage(seeker, uint64(offset))
+				if ok {
+					offset = int(nextOffset)
+					continue
+				}
+			}
 			break
 		}
 	}

@@ -12,6 +12,14 @@ import (
 	"testing"
 )
 
+func (s *Scanner) testScan(reader io.Reader) (results []int) {
+	s.ScanCollector(reader, func(offset int) bool {
+		results = append(results, offset)
+		return true
+	}, nil)
+	return results
+}
+
 type mockReader struct {
 	data []byte
 	off  int
@@ -56,7 +64,7 @@ func TestScanner(t *testing.T) {
 	for i := 0; i < 128; i++ {
 		s.WriteString("hhhellhell")
 		data := strings.NewReader(s.String() + "hello")
-		indexes := scan.Scan(data)
+		indexes := scan.testScan(data)
 		if len(indexes) != 1 || indexes[0] != (i+1)*10 {
 			t.Log(indexes, i)
 			t.FailNow()
@@ -73,7 +81,7 @@ func TestScannerBuffer(t *testing.T) {
 		n := i * 8
 		b := append(make([]byte, n), v.data...)
 		data := bytes.NewReader(b)
-		ret := scan.Scan(data)
+		ret := scan.testScan(data)
 		if len(ret) != 1 || ret[0] != n {
 			t.Log(ret, i)
 			t.FailNow()
@@ -90,7 +98,7 @@ func TestScanner_Aligned(t *testing.T) {
 		0, 0, 0, 0, 0,
 		0, 0x3F, 0x80, 0, 0,
 	})
-	ret := scan.Scan(data)
+	ret := scan.testScan(data)
 	if len(ret) > 0 {
 		t.FailNow()
 	}
@@ -109,7 +117,7 @@ func TestScanner_Truncated(t *testing.T) {
 
 		// 模拟分片读取，每步 10 字节
 		reader := &mockReader{data: data, step: 10}
-		indexes := s.Scan(reader)
+		indexes := s.testScan(reader)
 
 		expected := []int{8}
 		if !reflect.DeepEqual(indexes, expected) {
@@ -135,7 +143,7 @@ func TestScanner_Truncated(t *testing.T) {
 		s := NewScannerBuffer(context.TODO(), *v, 5)
 		reader := &mockReader{data: complexData, step: 5}
 
-		indexes := s.Scan(reader)
+		indexes := s.testScan(reader)
 
 		// 期待结果：
 		// 索引 4: 对齐 (4 % 4 == 0) -> 应该存在
@@ -171,7 +179,7 @@ func TestScanner_Float32WithOption(t *testing.T) {
 
 	s := NewScannerBuffer(context.TODO(), *value, 32)
 
-	results := s.Scan(&mockReader{data: data})
+	results := s.testScan(&mockReader{data: data})
 	if len(results) != len(want) {
 		t.FailNow()
 	}
@@ -227,7 +235,7 @@ func TestScanner_FloatOptions(t *testing.T) {
 			s := NewScannerBuffer(context.TODO(), *value, 4*10)
 
 			reader := &mockReader{data: data}
-			results := s.Scan(reader)
+			results := s.testScan(reader)
 
 			if len(results) != len(tt.wantVals) {
 				t.Errorf("%s: count mismatch. got %d, want %d", tt.name, len(results), len(tt.wantVals))
@@ -271,7 +279,7 @@ func BenchmarkScanner(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				reader := &mockReader{data: data}
-				indexes := s.Scan(reader)
+				indexes := s.testScan(reader)
 				if len(indexes) == 0 {
 					b.Fatal("should have matches")
 				}
@@ -301,7 +309,7 @@ func BenchmarkScannerFloatRounded(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			reader := &mockReader{data: data}
-			indexes := s.Scan(reader)
+			indexes := s.testScan(reader)
 			if len(indexes) == 0 {
 				b.Fatal("float32 should have matches")
 			}
@@ -316,7 +324,7 @@ func BenchmarkScannerFloatRounded(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			reader := &mockReader{data: data}
-			indexes := s.Scan(reader)
+			indexes := s.testScan(reader)
 			if len(indexes) == 0 {
 				b.Fatal("float64 should have matches")
 			}

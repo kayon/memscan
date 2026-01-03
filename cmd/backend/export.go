@@ -71,6 +71,12 @@ func NextScan(value *C.char) *C.char {
 	return returnJSON(results)
 }
 
+//export UndoScan
+func UndoScan() *C.char {
+	results := app.UndoScan()
+	return returnJSON(results)
+}
+
 //export ChangeValues
 func ChangeValues(value *C.char, cIndexes *C.int32_t, length C.int) *C.char {
 	idxSlice := unsafe.Slice((*int32)(cIndexes), int(length))

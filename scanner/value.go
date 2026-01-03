@@ -202,6 +202,10 @@ func (v *Value) EqualBytes(b []byte) bool {
 	return bytes.Equal(v.data, b)
 }
 
+func (v *Value) DisturbingByte() byte {
+	return ^v.data[0]
+}
+
 func (v *Value) isIntegerFloatWithOption() bool {
 	if v.option < OptionFloatRounded || v.option > OptionFloatTruncated {
 		return false
@@ -300,4 +304,5 @@ func NewBytes(b []byte) *Value {
 type ValueComparable interface {
 	Size() int
 	EqualBytes(b []byte) bool
+	DisturbingByte() byte
 }

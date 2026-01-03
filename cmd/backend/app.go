@@ -10,7 +10,7 @@ import (
 
 const (
 	MinResultsThreshold = 10
-	MaxResultsThreshold = 50
+	MaxResultsThreshold = 100
 )
 
 type App struct {
@@ -101,11 +101,21 @@ func (app *App) NextScan(value string) *Results {
 	return app.render(dur)
 }
 
+func (app *App) UndoScan() *Results {
+	if app.game == nil || app.value == nil {
+		return nil
+	}
+	if app.scan.UndoScan() {
+		return app.render(0)
+	}
+	return nil
+}
+
 func (app *App) ChangeValues(value string, indexes []int) *Results {
 	if app.game == nil || app.value == nil {
 		return nil
 	}
-	if app.scan.Count() == 0 {
+	if app.scan.Count() == 0 || app.scan.Count() > app.renderResultsThreshold {
 		return nil
 	}
 
@@ -130,8 +140,9 @@ func (app *App) RefreshValues() *Results {
 
 func (app *App) render(dur time.Duration) *Results {
 	results := &Results{
-		Count: app.scan.Count(),
-		Round: app.scan.Rounds(),
+		Count:   app.scan.Count(),
+		Round:   app.scan.Rounds(),
+		CanUndo: app.scan.CanUndo(),
 	}
 	if dur > 0 {
 		results.Time = dur.String()

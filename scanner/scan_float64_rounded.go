@@ -3,15 +3,17 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
 const vectorFloat64Size = 8 * 8
 
-func scanFloat64Rounded(ctx context.Context, reader io.Reader, bufSize int, min float64, max float64, collector Collector) {
+func scanFloat64Rounded(ctx context.Context, reader io.Reader, bufSize int, min float64, max float64, collector CollectorFunc, options *Options) {
 	var (
-		chunk  = make([]byte, bufSize)
-		offset = 0
+		chunk     = make([]byte, bufSize)
+		offset    = 0
+		seeker, _ = reader.(io.Seeker)
 	)
 
 	for {
@@ -20,18 +22,27 @@ func scanFloat64Rounded(ctx context.Context, reader io.Reader, bufSize int, min 
 		}
 
 		n, err := io.ReadFull(reader, chunk)
-		if n < 8 {
-			break
+		if n < 0 {
+			n = 0
 		}
-
-		// 保证处理的长度始终是对齐到 8 的
-		processable := (n / 8) * 8
-
-		scanFloat64Vectorized(chunk[:processable], min, max, offset, collector)
+		if n >= 8 {
+			// 保证处理的长度始终是对齐到 8 字节的
+			processable := (n / 8) * 8
+			scanFloat64Vectorized(chunk[:processable], min, max, offset, collector)
+		}
 		offset += n
-
 		if err != nil {
-			// io.ErrUnexpectedEOF
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if options != nil {
+				// 如果未读完期望大小, 尝试对齐到下一页
+				nextOffset, ok := options.alignNextPage(seeker, uint64(offset))
+				if ok {
+					offset = int(nextOffset)
+					continue
+				}
+			}
 			break
 		}
 	}

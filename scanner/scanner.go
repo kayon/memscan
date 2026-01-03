@@ -18,6 +18,7 @@ package scanner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 )
 
@@ -77,7 +78,7 @@ func NewScannerBuffer(ctx context.Context, value Value, bufSize int) *Scanner {
 	return scan
 }
 
-func (s *Scanner) ScanCollector(reader io.Reader, collector Collector) {
+func (s *Scanner) ScanCollector(reader io.Reader, collector CollectorFunc, options *Options) {
 	if closer, ok := reader.(io.Closer); ok {
 		defer closer.Close()
 	}
@@ -85,21 +86,15 @@ func (s *Scanner) ScanCollector(reader io.Reader, collector Collector) {
 		return
 	}
 	if s.rf32 != nil {
-		scanFloat32Rounded(s.ctx, reader, s.bufSize, s.rf32.min, s.rf32.max, collector)
+		scanFloat32Rounded(s.ctx, reader, s.bufSize, s.rf32.min, s.rf32.max, collector, options)
 	} else if s.rf64 != nil {
-		scanFloat64Rounded(s.ctx, reader, s.bufSize, s.rf64.min, s.rf64.max, collector)
+		scanFloat64Rounded(s.ctx, reader, s.bufSize, s.rf64.min, s.rf64.max, collector, options)
 	} else {
-		s.scanBytes(reader, collector)
+		s.scanBytes(reader, collector, options)
 	}
 }
 
-func (s *Scanner) Scan(reader io.Reader) []int {
-	var collector = NewSliceCollector(1024)
-	s.ScanCollector(reader, collector)
-	return collector.Results
-}
-
-func (s *Scanner) scanBytes(reader io.Reader, collector Collector) {
+func (s *Scanner) scanBytes(reader io.Reader, collector CollectorFunc, options *Options) {
 	var (
 		size = s.value.Size()
 		// 每次搜索的块, 并为truncated预留了容量 size, 因为 truncated 只会小于 Value.Size
@@ -111,7 +106,20 @@ func (s *Scanner) scanBytes(reader io.Reader, collector Collector) {
 		offset            int
 		isAligned         = s.value.Aligned()
 		pattern           = s.value.data
+		seeker, _         = reader.(io.Seeker)
 		err               error
+
+		tryAlignNextPage = func() bool {
+			if err != nil && !errors.Is(err, io.EOF) && options != nil {
+				nextOffset, ok := options.alignNextPage(seeker, uint64(offset+backward))
+				if ok {
+					offset = int(nextOffset)
+					truncLen = 0
+					return true
+				}
+			}
+			return false
+		}
 	)
 
 	for {
@@ -122,12 +130,20 @@ func (s *Scanner) scanBytes(reader io.Reader, collector Collector) {
 		// 将上次截断的数据移到开头
 		if truncLen > 0 {
 			forward = copy(chunk, truncated[:truncLen])
+		} else {
+			forward = 0
 		}
 		// 填充剩余空间
 		backward, err = io.ReadFull(reader, chunk[forward:forward+s.bufSize])
+		if backward < 0 {
+			backward = 0
+		}
 
 		// 上次截断的 truncated + 本次读取, 不足以完成一次搜索
 		if forward+backward < size {
+			if tryAlignNextPage() {
+				continue
+			}
 			break
 		}
 
@@ -144,7 +160,9 @@ func (s *Scanner) scanBytes(reader io.Reader, collector Collector) {
 			finalIndex := chunkOffset + pos
 
 			if !isAligned || finalIndex%size == 0 {
-				collector.Collect(finalIndex)
+				if !collector(finalIndex) {
+					return
+				}
 				i = pos + size
 			} else {
 				i = pos + (size - (finalIndex % size))
@@ -159,6 +177,9 @@ func (s *Scanner) scanBytes(reader io.Reader, collector Collector) {
 		}
 
 		if err != nil || backward < s.bufSize {
+			if tryAlignNextPage() {
+				continue
+			}
 			break
 		}
 

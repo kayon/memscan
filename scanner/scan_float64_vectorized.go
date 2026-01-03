@@ -3,7 +3,7 @@ package scanner
 
 import "unsafe"
 
-func scanFloat64Vectorized(data []byte, min, max float64, offset int, collector Collector) {
+func scanFloat64Vectorized(data []byte, min, max float64, offset int, collector CollectorFunc) {
 	n := len(data)
 	if n < 8 {
 		return
@@ -21,35 +21,35 @@ func scanFloat64Vectorized(data []byte, min, max float64, offset int, collector 
 		v6 := *(*float64)(unsafe.Pointer(basePtr + uintptr(i+48)))
 		v7 := *(*float64)(unsafe.Pointer(basePtr + uintptr(i+56)))
 		if v0 >= min && v0 < max {
-			collector.Collect(offset + i + 0)
+			collector(offset + i + 0)
 		}
 		if v1 >= min && v1 < max {
-			collector.Collect(offset + i + 8)
+			collector(offset + i + 8)
 		}
 		if v2 >= min && v2 < max {
-			collector.Collect(offset + i + 16)
+			collector(offset + i + 16)
 		}
 		if v3 >= min && v3 < max {
-			collector.Collect(offset + i + 24)
+			collector(offset + i + 24)
 		}
 		if v4 >= min && v4 < max {
-			collector.Collect(offset + i + 32)
+			collector(offset + i + 32)
 		}
 		if v5 >= min && v5 < max {
-			collector.Collect(offset + i + 40)
+			collector(offset + i + 40)
 		}
 		if v6 >= min && v6 < max {
-			collector.Collect(offset + i + 48)
+			collector(offset + i + 48)
 		}
 		if v7 >= min && v7 < max {
-			collector.Collect(offset + i + 56)
+			collector(offset + i + 56)
 		}
 	}
 
 	for ; i <= n-8; i += 8 {
 		val := *(*float64)(unsafe.Pointer(basePtr + uintptr(i)))
 		if val >= min && val < max {
-			collector.Collect(offset + i)
+			collector(offset + i)
 		}
 	}
 	return

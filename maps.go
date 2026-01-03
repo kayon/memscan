@@ -82,7 +82,6 @@ func (m *Maps) Parse(args ...RegionScanLevel) (regions Regions) {
 
 	for scan.Scan() {
 		line := scan.Bytes()
-		// 使用你之前实现的高性能解析方法
 		r := ParseRegion(line)
 		if r == nil {
 			continue

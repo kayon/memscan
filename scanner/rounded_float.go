@@ -22,9 +22,15 @@ const (
 	float64Epsilon = 1e-9
 )
 
+var (
+	_ ValueComparable = &RoundedFloat32{}
+	_ ValueComparable = &RoundedFloat64{}
+)
+
 type RoundedFloat32 struct {
 	min float32
 	max float32
+	raw []byte
 }
 
 func (rf32 RoundedFloat32) Size() int {
@@ -36,9 +42,14 @@ func (rf32 RoundedFloat32) EqualBytes(b []byte) bool {
 	return v >= rf32.min && v < rf32.max
 }
 
+func (rf32 RoundedFloat32) DisturbingByte() byte {
+	return ^rf32.raw[0]
+}
+
 type RoundedFloat64 struct {
 	min float64
 	max float64
+	raw []byte
 }
 
 func (rf64 RoundedFloat64) Size() int {
@@ -50,9 +61,16 @@ func (rf64 RoundedFloat64) EqualBytes(b []byte) bool {
 	return v >= rf64.min && v < rf64.max
 }
 
+func (rf64 RoundedFloat64) DisturbingByte() byte {
+	return ^rf64.raw[0]
+}
+
 func newRoundedFloat32(value Value) *RoundedFloat32 {
 	i := value.ToRaw(Float32).(float32)
-	var rf = &RoundedFloat32{}
+	var rf = &RoundedFloat32{
+		raw: make([]byte, 4),
+	}
+	copy(rf.raw, value.data)
 
 	switch value.option {
 	case OptionFloatRounded:
@@ -69,7 +87,10 @@ func newRoundedFloat32(value Value) *RoundedFloat32 {
 
 func newRoundedFloat64(value Value) *RoundedFloat64 {
 	i := value.ToRaw(Float64).(float64)
-	var rf = &RoundedFloat64{}
+	var rf = &RoundedFloat64{
+		raw: make([]byte, 8),
+	}
+	copy(rf.raw, value.data)
 
 	switch value.option {
 	case OptionFloatRounded:

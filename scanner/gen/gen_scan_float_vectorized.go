@@ -13,7 +13,7 @@ package scanner
 
 import "unsafe"
 
-func scan{{.Name}}Vectorized(data []byte, min, max {{.Type.Type}}, offset int, collector Collector) {
+func scan{{.Name}}Vectorized(data []byte, min, max {{.Type.Type}}, offset int, collector CollectorFunc) {
 	n := len(data)
 	if n < {{.Type.Size}} {
 		return
@@ -28,7 +28,7 @@ func scan{{.Name}}Vectorized(data []byte, min, max {{.Type.Type}}, offset int, c
 
 		{{- range .Items}}
 		if v{{.Index}} >= min && v{{.Index}} < max {
-			collector.Collect(offset+i+{{.Offset}})
+			collector(offset+i+{{.Offset}})
 		}
 		{{- end}}
 	}
@@ -36,7 +36,7 @@ func scan{{.Name}}Vectorized(data []byte, min, max {{.Type.Type}}, offset int, c
 	for ; i <= n-{{.Type.Size}}; i += {{.Type.Size}} {
 		val := *(*{{.Type.Type}})(unsafe.Pointer(basePtr + uintptr(i)))
 		if val >= min && val < max {
-			collector.Collect(offset+i)
+			collector(offset+i)
 		}
 	}
 	return

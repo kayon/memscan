@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"sync"
-	"time"
 
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/sys/unix"
@@ -34,35 +32,58 @@ import (
 const (
 	IOV_MAX           = 1024
 	scanMaxGoroutines = 2048
-	resultsAllocCaps  = 256 * 1024 * 1024
+
+	resultsAllocCaps = 64 * 1024 * 1024
+
+	regionResultsAllocCaps = regionLargeSize / 8
+	collectBatchSize       = 512
 )
 
 func NewMemscan() *Memscan {
 	results, err := NewMmapUint64(resultsAllocCaps)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 	}
-	tempResults, err := NewMmapUint64(resultsAllocCaps)
+
+	lastResults, err := NewMmapUint64(resultsAllocCaps)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 	}
 
 	return &Memscan{
 		results:     results,
-		tempResults: tempResults,
+		prevResults: lastResults,
 		sem:         semaphore.NewWeighted(scanMaxGoroutines),
 	}
 }
 
 type Memscan struct {
-	proc        *deck.Process
-	maps        *Maps
-	results     *MmapUint64
-	tempResults *MmapUint64
-	round       uint
-	sem         *semaphore.Weighted
-	ctx         context.Context
-	cancel      context.CancelFunc
+	proc          *deck.Process
+	maps          *Maps
+	results       *MmapUint64
+	prevResults   *MmapUint64
+	regionBuffers []*MmapUint64
+
+	round   uint
+	canUndo bool
+	sem     *semaphore.Weighted
+	ctx     context.Context
+	cancel  context.CancelFunc
+}
+
+func (m *Memscan) CanUndo() bool {
+	return m.canUndo
+}
+
+func (m *Memscan) UndoScan() bool {
+	if !m.canUndo {
+		return false
+	}
+	m.canUndo = false
+	m.results, m.prevResults = m.prevResults, m.results
+	m.prevResults.Clear()
+	m.round -= 1
+	return true
 }
 
 func (m *Memscan) Open(proc *deck.Process) (err error) {
@@ -77,9 +98,6 @@ func (m *Memscan) Open(proc *deck.Process) (err error) {
 	return nil
 }
 
-// Cancel
-// The scanning process is too fast.
-// adding a cancel button to the UI would make it difficult for users to react in time, haha.
 func (m *Memscan) Cancel() {
 	if m.cancel != nil {
 		m.cancel()
@@ -124,106 +142,22 @@ func (m *Memscan) Reset() {
 	if m.results != nil {
 		m.results.Clear()
 	}
-	if m.tempResults != nil {
-		m.tempResults.Clear()
+	if m.prevResults != nil {
+		m.prevResults.Clear()
 	}
 	m.round = 0
+	m.canUndo = false
 }
 
-func (m *Memscan) FirstScan(value *scanner.Value) time.Duration {
-	m.Reset()
-
-	if m.results == nil || m.tempResults == nil {
-		return 0
+func (m *Memscan) SearchInResults(address uint64) int {
+	if m.results == nil || m.results.Len() == 0 {
+		return -1
 	}
-
-	if m.proc == nil || !m.proc.Alive() {
-		_ = m.Close()
-		return 0
+	i, found := slices.BinarySearch(m.results.Data(), address)
+	if found {
+		return i
 	}
-
-	m.proc.Pause()
-	defer m.proc.Resume()
-
-	st := time.Now()
-	regions := m.maps.Parse(REGION_ALL_RW)
-	regions = RegionsOptimize(regions)
-
-	var wg sync.WaitGroup
-	scan := scanner.NewScanner(m.ctx, *value)
-
-	for _, region := range regions {
-		// 使用 semaphore.Acquire 替代 select-case
-		if err := m.sem.Acquire(m.ctx, 1); err != nil {
-			break // Context 取消
-		}
-
-		wg.Add(1)
-		go m.firstScan(scan, region, &wg)
-	}
-
-	wg.Wait()
-	m.round += 1
-
-	return time.Since(st)
-}
-
-func (m *Memscan) NextScan(value *scanner.Value) time.Duration {
-	count := m.results.Len()
-	if count == 0 || m.tempResults == nil {
-		return 0
-	}
-
-	st := time.Now()
-	m.tempResults.Clear()
-
-	var wg sync.WaitGroup
-	pageSize := IOV_MAX
-
-	for start := 0; start < count; start += pageSize {
-		if err := m.sem.Acquire(m.ctx, 1); err != nil {
-			break
-		}
-		addresses := m.results.Get(start, pageSize)
-		if len(addresses) == 0 {
-			break
-		}
-
-		wg.Add(1)
-		go m.filterResults(addresses, value.Comparable(), &wg)
-	}
-
-	wg.Wait()
-
-	m.results, m.tempResults = m.tempResults, m.results
-	m.tempResults.Clear()
-
-	m.round += 1
-	return time.Since(st)
-}
-
-func (m *Memscan) filterResults(addresses []uint64, value scanner.ValueComparable, wg *sync.WaitGroup) {
-	defer m.sem.Release(1)
-	defer wg.Done()
-
-	buf := getReadBuffer(len(addresses) * value.Size())
-	data, invalidIndex := m.readValuesRaw(addresses, value.Size(), buf)
-
-	matched := make([]uint64, 0, len(addresses))
-	for idx, item := range data {
-		if slices.Contains(invalidIndex, idx) {
-			continue
-		}
-		if value.EqualBytes(item) {
-			matched = append(matched, addresses[idx])
-		}
-	}
-
-	if len(matched) > 0 {
-		m.tempResults.Put(matched...)
-	}
-
-	freeReadBuffer(buf)
+	return -1
 }
 
 func (m *Memscan) RenderResults(valueType *scanner.Value) (rows [][2]string) {
@@ -236,23 +170,22 @@ func (m *Memscan) RenderResults(valueType *scanner.Value) (rows [][2]string) {
 	}
 	// 这里不考虑地址数量 > IOV_MAX
 
-	buf := getReadBuffer(count * valueType.Size())
+	valueSize := valueType.Size()
+	buf := getReadBuffer(count * valueSize)
 	defer freeReadBuffer(buf)
 
-	data, invalidIndex := m.readValuesRaw(m.results.Data(), valueType.Size(), buf)
+	m.readValuesRaw(m.results.Data(), valueSize, valueType.DisturbingByte(), buf)
 	value := &scanner.Value{}
 	value.SetType(valueType.Type())
 
 	rows = make([][2]string, 0, count)
 	for i := 0; i < count; i++ {
-		if slices.Contains(invalidIndex, i) {
-			continue
-		}
 		addr, ok := m.results.Index(i)
 		if !ok {
 			continue
 		}
-		value.SetBytes(data[i])
+		offset := i * valueSize
+		value.SetBytes(buf[offset : offset+valueSize])
 		rows = append(rows, [2]string{
 			fmt.Sprintf("%08X", addr),
 			value.Format(value.Type()),
@@ -297,28 +230,38 @@ func (m *Memscan) ChangeValues(address []uint64, value *scanner.Value) {
 	}
 }
 
-func (m *Memscan) firstScan(scan *scanner.Scanner, region Region, wg *sync.WaitGroup) {
-	defer m.sem.Release(1)
-	defer wg.Done()
+// 确保 len(addresses) <= IOV_MAX
+func (m *Memscan) filterResults(addresses []uint64, valueSize int, comp scanner.ValueComparable, disturb byte, readBuffer []byte, results *MmapUint64) {
+	m.readValuesRaw(addresses, valueSize, disturb, readBuffer)
 
-	collector := scanner.CollectorFunc(func(offset int) {
-		m.results.Put(uint64(offset) + region.Start)
-	})
+	var batch [collectBatchSize]uint64
+	var count int
 
-	scan.ScanCollector(region.Pipe(m.proc.PID), collector)
+	for i := range addresses {
+		offset := i * valueSize
+		if comp.EqualBytes(readBuffer[offset : offset+valueSize]) {
+			batch[count] = addresses[i]
+			count++
+			if count == collectBatchSize {
+				_ = results.Put(batch[:]...)
+				count = 0
+			}
+		}
+	}
+	if count > 0 {
+		_ = results.Put(batch[:count]...)
+	}
 }
 
-func (m *Memscan) readValuesRaw(addresses []uint64, size int, buf []byte) (data [][]byte, invalidIndex []int) {
+func (m *Memscan) readValuesRaw(addresses []uint64, size int, disturb byte, buf []byte) {
 	if size <= 0 {
 		return
 	}
 	n := len(addresses)
 	if n == 0 {
-		return nil, nil
+		return
 	}
 
-	data = make([][]byte, n)
-	invalidIndex = make([]int, 0, n>>2)
 	localPtr := getLocalIovec()
 	remotePtr := getRemoteIovec()
 
@@ -330,11 +273,8 @@ func (m *Memscan) readValuesRaw(addresses []uint64, size int, buf []byte) (data 
 		remaining := n - currentPos
 		for i := 0; i < remaining; i++ {
 			idx := currentPos + i
-			start := idx * size
-			end := start + size
-			data[idx] = buf[start:end]
 
-			local[i].Base = &data[idx][0]
+			local[i].Base = &buf[idx*size]
 			local[i].Len = uint64(size)
 
 			remote[i].Base = uintptr(addresses[idx])
@@ -346,12 +286,8 @@ func (m *Memscan) readValuesRaw(addresses []uint64, size int, buf []byte) (data 
 		currentPos += successCount
 
 		if currentPos < n {
-			// 清空后续, 防止脏读
-			for i := range data[currentPos] {
-				data[currentPos][i] = 0
-			}
-			// skip invalid address
-			invalidIndex = append(invalidIndex, currentPos)
+			offset := currentPos * size
+			buf[offset] = disturb
 			currentPos++
 		}
 

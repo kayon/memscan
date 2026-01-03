@@ -6,7 +6,7 @@ HEADER_NAME=$(SHARED_NAME:.so=.h)
 DECK_USER=deck
 DECK_PASS?=$(DECK_PWD)
 DECK_HOST?=$(DECK_HOST)
-DECK_PLUG_BACKEND_DIR=/home/deck/homebrew/plugins/decky-reroll/bin
+DECK_PLUG_BACKEND_DIR=/home/deck/homebrew/plugins/Reroll/bin
 
 
 .PHONY: all build build.cross deploy clean

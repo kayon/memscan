@@ -292,7 +292,7 @@ func (console *Console) next() {
 }
 
 func (console *Console) nextScan() {
-	console.lastScan = console.mscan.NextScan(console.value)
+	console.lastScan = console.mscan.NextScanForceSparse(console.value)
 	console.step = ConsoleStepNext
 }
 

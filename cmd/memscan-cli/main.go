@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kayon/memscan"
 	"github.com/kayon/memscan/deck"
+	"github.com/kayon/memscan/scanner"
 
 	"github.com/spf13/pflag"
 )
@@ -28,6 +30,7 @@ var (
 	// Basic flags (Global switches)
 	showAllProcesses       bool
 	showGameProcesses      bool
+	customTest             bool
 	findGameWithInstanceID int
 	findGameWithAppID      int64
 )
@@ -36,6 +39,7 @@ func init() {
 	// Process list switches
 	pflag.BoolVarP(&showAllProcesses, "all-processes", "a", false, "display all running processes")
 	pflag.BoolVarP(&showGameProcesses, "game-processes", "g", false, "display only game-related processes")
+	pflag.BoolVarP(&customTest, "test", "t", false, "Test")
 	pflag.IntVar(&findGameWithInstanceID, "instance", 0, "find game process with instance ID")
 	pflag.Int64Var(&findGameWithAppID, "appid", -1, "find game process with app ID")
 
@@ -45,6 +49,8 @@ func init() {
 
 func main() {
 	switch {
+	case customTest:
+		customTestFunc()
 	case showAllProcesses:
 		processes, err := deck.EnumDeckProcesses()
 		checkError(err)
@@ -72,4 +78,35 @@ func checkError(err error) {
 		_, _ = fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
+}
+
+func customTestFunc() {
+	processes := deck.EnumGameProcesses()
+	if len(processes) == 0 {
+		return
+	}
+	process := processes[0]
+	displayProcesses([]*deck.Process{process})
+
+	scan := memscan.NewMemscan()
+	err := scan.Open(process)
+	checkError(err)
+	defer scan.Close()
+
+	value := scanner.NewInt32(1)
+
+	process.Pause()
+	defer process.Resume()
+
+	dur := scan.FirstScan(value, true)
+	fmt.Printf("FirstScan: %d, %s\n", scan.Count(), dur)
+
+	dur = scan.NextScanForceDense(value)
+	fmt.Printf("NextScanForceDense: %d, %s\n", scan.Count(), dur)
+
+	scan.UndoScan()
+	fmt.Printf("Undo: %d\n", scan.Count())
+
+	dur = scan.NextScanForceSparse(value)
+	fmt.Printf("NextScanForceSparse: %d, %s\n", scan.Count(), dur)
 }

@@ -23,7 +23,7 @@ import (
 	"github.com/kayon/memscan/scanner"
 )
 
-var version = "0.2.2"
+var version = "0.3.0"
 
 const (
 	defRenderResultsThreshold = 10
@@ -32,10 +32,11 @@ const (
 var app *App
 
 type Results struct {
-	Count int
-	List  [][2]string
-	Round uint
-	Time  string
+	Count   int
+	List    [][2]string
+	Round   uint
+	Time    string
+	CanUndo bool
 }
 
 func init() {
