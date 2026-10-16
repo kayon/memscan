@@ -60,8 +60,8 @@ func AutoSelectGameProcess(appID C.int64_t) *C.char {
 }
 
 //export FirstScan
-func FirstScan(appID C.int64_t, value *C.char, valueType C.int, option C.int) *C.char {
-	results := app.FirstScan(int64(appID), C.GoString(value), scanner.Type(valueType), scanner.Option(option))
+func FirstScan(appID C.int64_t, value *C.char, valueType C.int, option C.int, emulator C.int) *C.char {
+	results := app.FirstScan(int64(appID), C.GoString(value), scanner.Type(valueType), scanner.Option(option), emulator != 0)
 	return returnJSON(results)
 }
 

@@ -57,7 +57,7 @@ func (app *App) AutoSelectGameProcess(appID int64) *deck.Process {
 
 // FirstScan 在此之前调用 GameProcess
 // 在UI中保存进程信息用于调试, 其它任何时候不再返回 Process
-func (app *App) FirstScan(appID int64, value string, valueType scanner.Type, option scanner.Option) *Results {
+func (app *App) FirstScan(appID int64, value string, valueType scanner.Type, option scanner.Option, emulatorMode bool) *Results {
 	app.AutoSelectGameProcess(appID)
 	if app.game == nil {
 		return nil
@@ -75,7 +75,7 @@ func (app *App) FirstScan(appID int64, value string, valueType scanner.Type, opt
 	}
 
 	app.value.WithOption(option)
-	dur := app.scan.FirstScan(app.value)
+	dur := app.scan.FirstScan(app.value, false, emulatorMode)
 	return app.render(dur)
 }
 

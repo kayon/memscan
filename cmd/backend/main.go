@@ -23,7 +23,7 @@ import (
 	"github.com/kayon/memscan/scanner"
 )
 
-var version = "0.3.0"
+var version = "0.3.1"
 
 const (
 	defRenderResultsThreshold = 10

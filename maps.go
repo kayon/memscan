@@ -60,10 +60,14 @@ func (m *Maps) Close() error {
 	return m.file.Close()
 }
 
-func (m *Maps) Parse(args ...RegionScanLevel) (regions Regions) {
-	var scanLevel = REGION_ALL
-	if len(args) > 0 && args[0] <= REGION_HEAP_STACK_EXECUTABLE_BSS {
-		scanLevel = args[0]
+// Parse enumerates readable regions of the process.
+// scanLevel selects which regions are considered useful.
+// includeShared also keeps shared mappings (normally skipped), which is
+// required for emulators (Yuzu, Ryujinx, ...) whose guest RAM / shared buffers
+// are mapped as MAP_SHARED.
+func (m *Maps) Parse(scanLevel RegionScanLevel, includeShared bool) (regions Regions) {
+	if scanLevel > REGION_HEAP_STACK_EXECUTABLE_BSS {
+		scanLevel = REGION_ALL
 	}
 
 	_, _ = m.file.Seek(0, io.SeekStart)
@@ -176,7 +180,7 @@ func (m *Maps) Parse(args ...RegionScanLevel) (regions Regions) {
 			if isSkipRegion(filename) {
 				continue
 			}
-			if r.Perm.Shared() && filename != m.exe {
+			if !includeShared && r.Perm.Shared() && filename != m.exe {
 				continue
 			}
 
