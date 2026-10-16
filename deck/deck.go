@@ -120,8 +120,13 @@ func EnumGameProcesses(args ...int64) []*Process {
 		pattern += fmt.Sprintf("%d", appID)
 	}
 
+	// The SteamLaunch "reaper" process is the one actually named "reaper".
+	// Wrapper processes (steam-runtime-launch-client, steam-runtime-supervisor)
+	// embed the same "SteamLaunch AppId=..." string in their command line and
+	// would otherwise be matched first (they have lower PIDs) and have no
+	// children, making game detection fail on newer Steam runtimes.
 	reaperIndex := slices.IndexFunc(processes, func(proc *Process) bool {
-		return strings.Contains(proc.Command, pattern)
+		return proc.Comm == "reaper" && strings.Contains(proc.Command, pattern)
 	})
 
 	if reaperIndex == -1 {
