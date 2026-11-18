@@ -16,7 +16,6 @@
 package memscan
 
 import (
-	"errors"
 	"fmt"
 	"runtime"
 	"sync/atomic"
@@ -91,12 +90,24 @@ func (m *MmapUint64) Put(items ...uint64) error {
 	if n == 0 {
 		return nil
 	}
-	startIdx := atomic.AddUint64(&m.cursor, n) - n
-	if startIdx+n > uint64(len(m.data)) {
-		return errors.New("mmap capacity exceeded")
+
+	startIdx := m.cursor
+	newCount := startIdx + n
+
+	if newCount > uint64(len(m.data)) {
+		newCap := len(m.data) * 2
+		if uint64(newCap) < newCount {
+			newCap = int(newCount)
+		}
+
+		if err := m.grow(newCap); err != nil {
+			return fmt.Errorf("put grow failed: %w", err)
+		}
 	}
 
-	copy(m.data[startIdx:], items)
+	copy(m.data[startIdx:newCount], items)
+	m.cursor = newCount
+
 	return nil
 }
 

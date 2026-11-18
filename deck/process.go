@@ -118,7 +118,11 @@ func (proc *Process) Refresh() error {
 		if err == nil {
 			// may be truncated. The kernel truncates it to 15 characters
 			if len(proc.Comm) == 15 {
-				p := buf[:bytes.IndexByte(buf, 0x0)]
+				end := bytes.IndexByte(buf, 0x0)
+				if end < 0 {
+					end = len(buf)
+				}
+				p := buf[:end]
 				n := bytes.LastIndexByte(p, '/')
 				if n < 0 {
 					n = bytes.LastIndexByte(p, '\\')
