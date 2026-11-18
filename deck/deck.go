@@ -121,6 +121,10 @@ func EnumGameProcesses(args ...int64) []*Process {
 	}
 
 	reaperIndex := slices.IndexFunc(processes, func(proc *Process) bool {
+		if proc.Comm != "reaper" {
+			return false
+		}
+
 		return strings.Contains(proc.Command, pattern)
 	})
 
