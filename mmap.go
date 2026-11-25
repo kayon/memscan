@@ -61,8 +61,13 @@ func (m *MmapUint64) Merge(other *MmapUint64) error {
 	if other == nil {
 		return nil
 	}
+	return m.AppendSlice(other.Data())
+}
 
-	n := uint64(other.Len())
+// AppendSlice appends items, growing the mapping when needed.
+// Not safe for concurrent use (like Merge).
+func (m *MmapUint64) AppendSlice(items []uint64) error {
+	n := uint64(len(items))
 	if n == 0 {
 		return nil
 	}
@@ -78,7 +83,7 @@ func (m *MmapUint64) Merge(other *MmapUint64) error {
 		}
 	}
 
-	copy(m.data[m.cursor:], other.Data())
+	copy(m.data[m.cursor:], items)
 
 	m.cursor += n
 	return nil

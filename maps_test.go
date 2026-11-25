@@ -34,7 +34,7 @@ func TestParseV2(t *testing.T) {
 		file: f,
 	}
 	// 387A0000-38800000 387EDO28
-	regions := m.Parse(REGION_ALL_RW)
+	regions := m.Parse(REGION_ALL_RW, false)
 	var size uint64
 	for _, region := range regions {
 		size += region.Size
@@ -55,7 +55,7 @@ func TestOptimize(t *testing.T) {
 		exe:  `/home/deck/.local/share/Steam/compatibilitytools.d/GE-Proton10-24/files/bin/wine64-preloader`,
 		file: f,
 	}
-	regions := m.Parse(REGION_ALL_RW)
+	regions := m.Parse(REGION_ALL_RW, false)
 	optimized := RegionsOptimize(regions)
 
 	checkOptimizedRegionsStrict(t, regions, optimized)

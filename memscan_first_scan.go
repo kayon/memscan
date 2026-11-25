@@ -38,14 +38,25 @@ func (m *Memscan) FirstScan(value *scanner.Value, args ...bool) time.Duration {
 	if len(args) > 0 {
 		processPaused = args[0]
 	}
+	// emulator mode: scan every readable region (including read-only) and keep
+	// shared mappings. Needed for emulators whose guest memory is MAP_SHARED.
+	var emulatorMode bool
+	if len(args) > 1 {
+		emulatorMode = args[1]
+	}
 
 	if !processPaused {
 		m.proc.Pause()
 		defer m.proc.Resume()
 	}
 
+	regionLevel := REGION_ALL_RW
+	if emulatorMode {
+		regionLevel = REGION_ALL
+	}
+
 	st := time.Now()
-	regions := m.maps.Parse(REGION_ALL_RW)
+	regions := m.maps.Parse(regionLevel, emulatorMode)
 	regions = RegionsOptimize(regions)
 	m.regionBuffers = make([]*MmapUint64, len(regions))
 

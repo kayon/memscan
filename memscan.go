@@ -40,12 +40,18 @@ const (
 )
 
 func NewMemscan() *Memscan {
-	results, err := NewMmapUint64(resultsAllocCaps)
+	return newMemscanCaps(resultsAllocCaps)
+}
+
+// newMemscanCaps creates a Memscan whose result buffers start with caps
+// entries; they grow on demand when results are merged (see MmapUint64.Merge).
+func newMemscanCaps(caps int) *Memscan {
+	results, err := NewMmapUint64(caps)
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 	}
 
-	lastResults, err := NewMmapUint64(resultsAllocCaps)
+	lastResults, err := NewMmapUint64(caps)
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 	}
@@ -177,6 +183,7 @@ func (m *Memscan) RenderResults(valueType *scanner.Value) (rows [][2]string) {
 	m.readValuesRaw(m.results.Data(), valueSize, valueType.DisturbingByte(), buf)
 	value := &scanner.Value{}
 	value.SetType(valueType.Type())
+	value.SetUnsigned(valueType.Unsigned())
 
 	rows = make([][2]string, 0, count)
 	for i := 0; i < count; i++ {
@@ -282,6 +289,12 @@ func (m *Memscan) readValuesRaw(addresses []uint64, size int, disturb byte, buf 
 		}
 
 		nRead, err := unix.ProcessVMReadv(m.proc.PID, local[:remaining], remote[:remaining], 0)
+		// A failed call returns -1: nothing was read. Left as is, -1 / size is -1
+		// for a size of one byte (an Int8) and the position went back as much as
+		// it went forward: a page that had disappeared made the scan loop forever.
+		if nRead < 0 {
+			nRead = 0
+		}
 		successCount := nRead / size
 		currentPos += successCount
 
@@ -339,6 +352,10 @@ func (m *Memscan) writeValues(addresses []uint64, value *scanner.Value) (int, er
 		}
 
 		nWrite, err := unix.ProcessVMWritev(m.proc.PID, local[:remaining], remote[:remaining], 0)
+		// a failed call returns -1: nothing was written (see readValuesRaw)
+		if nWrite < 0 {
+			nWrite = 0
+		}
 
 		totalWritten += nWrite
 		successCount := nWrite / size

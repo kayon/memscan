@@ -84,6 +84,10 @@ func (r *RegionReader) Read(p []byte) (n int, err error) {
 	r.rIov[0].Len = int(size)
 
 	n, err = unix.ProcessVMReadv(r.pid, r.lIov[:], r.rIov[:], 0)
+	if n < 0 {
+		// a failed call returns -1: nothing was read, as io.Reader promises
+		n = 0
+	}
 	if n > 0 {
 		r.off += uint64(n)
 	}

@@ -46,6 +46,20 @@ type Value struct {
 	typ    Type
 	data   []byte
 	option Option
+	// unsigned only changes how integers are displayed: the bytes are the same
+	// (200 and -56 are both 0xC8 in an Int8)
+	unsigned bool
+}
+
+// Unsigned tells whether integers are displayed as unsigned numbers.
+func (v *Value) Unsigned() bool {
+	return v.unsigned
+}
+
+// SetUnsigned selects the unsigned display of integers (it has no effect on
+// the other types). A search for 200 is displayed as 200, not as -56.
+func (v *Value) SetUnsigned(unsigned bool) {
+	v.unsigned = unsigned
 }
 
 // Aligned Whether the memory is aligned
@@ -179,7 +193,20 @@ func (v *Value) Format(args ...Type) string {
 		return v.String()
 	}
 
-	return fmt.Sprint(v.ToRaw(typ))
+	raw := v.ToRaw(typ)
+	if v.unsigned {
+		switch i := raw.(type) {
+		case int8:
+			return fmt.Sprint(uint8(i))
+		case int16:
+			return fmt.Sprint(uint16(i))
+		case int32:
+			return fmt.Sprint(uint32(i))
+		case int64:
+			return fmt.Sprint(uint64(i))
+		}
+	}
+	return fmt.Sprint(raw)
 }
 
 func (v *Value) HasOption() bool {
